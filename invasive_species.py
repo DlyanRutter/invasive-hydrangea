@@ -30,13 +30,41 @@ def resize_image(img, max_dim=96):
     scale = max_dim / bigger
     return img.resize((int(bigger*scale), int(smaller*scale)))
 
-def image_data(ids, max_dim=96, center=True):
+def image_train(ids, max_dim=96, center=True):
     X = np.empty((len(ids), max_dim, max_dim, 1))
     for i, idee in enumerate(ids):
-            x = resize_image(load_img(os.path.join(root,'/Users/dylanrutter/Downloads/images', str(idee) + '.jpg'), grayscale=True), max_dim=max_dim)
+            x = resize_image(load_img(os.path.join(root,'/Users/dylanrutter/Downloads/train', str(idee) + '.jpg'), grayscale=True), max_dim=max_dim)
+            x = img_to_array(x)
+            length = x.shape[0]
+            width = x.shape[1]
 
+            if center:
+                h1 = int((max_dim - length) / 2)
+                h2 = h1 + length
+                w1 = int((max_dim - width) / 2)
+                w2 = w1 + width
+            else:
+                h1, w1 = 0, 0
+                h2, w2 = (length, width)
+            X[i, h1:h2, w1:w2, 0:1] = x
+    return np.around(X / 255.0)
+
+def image_test(ids, max_dim=96, center=True):
+    X = np.empty((len(ids), max_dim, max_dim, 1))
+    for i, idee in enumerate(ids):
+            x = resize_image(load_img(os.path.join(root,'/Users/dylanrutter/Downloads/test', str(idee) + '.jpg'), grayscale=True), max_dim=max_dim)
+            x = img_to_array(x)
+            length = x.shape[0]
+            width = x.shape[1]
+
+            if center:
+                h1 = int((max_dim - length) / 2)
+                h2 = h1 + length
+                w1 = int((max_dim - width) / 2)
+                w2 = w1 + width
+            else:
+                h1, w1 = 0, 0
+                h2, w2 = (length, width)
+            X[i, h1:h2, w1:w2, 0:1] = x
+    return np.around(X / 255.0)
         
-
-    
-    
-    
