@@ -3,11 +3,9 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from keras.preprocessing.image import img_to_array, load_img, \
-     ImageDataGenerator, NumpyArrayIterator, array_to_img
+from keras.preprocessing.image import img_to_array, load_img, ImageDataGenerator, NumpyArrayIterator, array_to_img
 from keras.models import Model, load_model
-from keras.layers import Dense, Dropout, Activation, Convolution2D, \
-     MaxPooling2D, Flatten, Input, merge
+from keras.layers import Dense, Dropout, Activation, Convolution2D, MaxPooling2D, Flatten, Input, merge
 from keras.layers.advanced_activations import PReLU
 from keras import backend as K
 
