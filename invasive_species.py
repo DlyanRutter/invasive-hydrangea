@@ -1,4 +1,4 @@
-import os, keras
+import os, keras, cv2
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -30,6 +30,21 @@ def resize_image(img, max_dim=96):
     bigger, smaller = float(max(img.size)), float(min(img.size))
     scale = max_dim / bigger
     return img.resize((int(bigger*scale), int(smaller*scale)))
+
+def center_image(img):
+    """
+    Centers image (img) and resizes it
+    """
+    size = [96, 96]
+    img_size = img.shape[:2]
+
+    row = (size[1] - img_size[0]) // 2
+    col = (size[0] - img_size[1]) // 2
+    resized = np.zeros(list(size) + [img.shape[2]], dtype=np.uint8)
+    resized[row:(row + img.shape[0]), col:(col + img.shape[1])] = img
+
+    return resized
+    
 
 def image_train(ids, max_dim=96, center=True):
     """
