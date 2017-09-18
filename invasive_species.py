@@ -2,6 +2,7 @@ import os, keras, cv2
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from scipy import ndimage
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import KFold
 from keras.models import Model, load_model
@@ -14,8 +15,8 @@ split = 0.9
 root = '../input'
 np.random.seed(1337)
 LR = 1e-3
+pixel_depth = 255.0
 
-IMG_SIZE = 96
 MODEL_NAME = 'invasiveplants -{}-{}.model'.format(LR, '2conv')
 
 def load_train_df():
@@ -59,29 +60,42 @@ def label_img(img):
     if label == 0: return [1, 0]
     if label == 1: return [0, 1]
 
-def img_train_data(angle=360.0):
+def img_train_data(IMG_SIZE=96, keras=False):
     """
     loads images from training data. resizes images according to dim IMG_SIZE.
-    centers img and rotates img according to angle
+    centers img and rotates img according to angle. If keras is set to true,
+    shape of output will be (#images, pixel height, pixel width, color channel).
+    otherwise, will be set to TensorFlow standards (#images, height, width)
     """
     img_data = []
     train_dir = '/Users/dylanrutter/Downloads/train'
-    
-    for img in os.listdir(train_dir):
-        
+    image_files = os.listdir(train_dir)
+    dataset = np.ndarray(shape = (len(image_files),IMG_SIZE,IMG_SIZE),
+                         dtype=np.float32)                                    
+    num_images=0
+    for img in image_files:
         path = os.path.join(train_dir, img)
-        img = cv2.resize(cv2.imread(path, cv2.IMREAD_COLOR),(IMG_SIZE,IMG_SIZE))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
-        (h, w) = img.shape[:2]
-        center = (w / 2, h / 2)
-        M = cv2.getRotationMatrix2D(center, angle, 1.0)
-        img = cv2.warpAffine(img, M, (w,h))
-        
-        img_data.append(np.array(img))
-        
-    np.save('img_train_data.npy', img_data)
-    return img_data
+        if keras == True:
+            img = cv2.resize(cv2.imread(path, cv2.IMREAD_COLOR),
+                             (IMG_SIZE,IMG_SIZE))
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img_data.append(np.array(img))
+
+        else:
+            image_data = cv2.resize(cv2.imread(path, cv2.IMREAD_GRAYSCALE),
+                                    (IMG_SIZE,IMG_SIZE))
+            dataset[num_images, :, :] = image_data
+            num_images = num_images + 1
+
+    dataset = dataset[0:num_images, :, :]
+
+    if keras == True:
+        np.save('img_train_data_keras.npy', img_data)
+        return img_data
+    else:
+        np.save('img_train_data_tf.npy', dataset)
+        return dataset
 
 def create_test_data(angle=360.0):
     test_dir = '/Users/dylanrutter/Downloads/test'
@@ -99,16 +113,94 @@ def create_test_data(angle=360.0):
     return testing_data
 
 #all_training_imgs = img_train_data()
-
+#tf_img_train = img_train_data(keras=False)
+#train_img = np.load('img_train_data_keras.npy')
 train_name, train_label, train_one_hot = get_train_df_vals()
-train_img = np.load('img_train_data.npy')
+train_img = np.load('img_train_data_tf.npy')
 
-def shuffle(dataset, labels):
-  permutation = np.random.permutation(labels.shape[0])
-  shuffled_dataset = dataset[permutation,:,:]
-  shuffled_labels = labels[permutation]
-  return shuffled_dataset, shuffled_labels
+num_labels=2
+def mix(dataset, labels, image_size=96,):
+    """
+    makes one-hot
+    """
+    dataset = dataset.reshape((-1, image_size * image_size)).astype(np.float32)
+    labels = (np.arange(num_labels) == labels[:,None]).astype(np.float32)
+    return dataset, labels
 
-train_imgs, train_labels = shuffle(train_img[:1400], train_label[:1400])
-valid_imgs, valid_labels = shuffle(train_img[1400:1850], train_label[1400:1850])
-test_imgs, test_labels = shuffle(train_img[1850:], train_label[1850:])
+train_dataset, train_labels = mix(train_img[:1850], train_label[:1850])
+valid_dataset, valid_labels = mix(train_img[1850:2000], train_label[1850:2000])
+test_dataset, test_labels = mix(train_img[2000:], train_label[2000:])
+
+print('Training set', train_dataset.shape, train_labels.shape)
+print('Validation set', valid_dataset.shape, valid_labels.shape)
+print('Test set', test_dataset.shape, test_labels.shape)
+
+train_subset = 700
+image_size = 96
+num_steps = 801
+
+graph = tf.Graph()
+with graph.as_default():
+
+  # Input data.
+  # Load the training, validation and test data into constants that are
+  # attached to the graph.
+  tf_train_dataset = tf.constant(train_dataset[:train_subset, :])
+  tf_train_labels = tf.constant(train_labels[:train_subset])
+  tf_valid_dataset = tf.constant(valid_dataset)
+  tf_test_dataset = tf.constant(test_dataset)
+  
+  # Variables.
+  # These are the parameters that we are going to be training. The weight
+  # matrix will be initialized using random values following a (truncated)
+  # normal distribution. The biases get initialized to zero.
+  weights = tf.Variable(
+    tf.truncated_normal([image_size * image_size, num_labels]))
+  biases = tf.Variable(tf.zeros([num_labels]))
+  
+  # Training computation.
+  # We multiply the inputs with the weight matrix, and add biases. We compute
+  # the softmax and cross-entropy (it's one operation in TensorFlow, because
+  # it's very common, and it can be optimized). We take the average of this
+  # cross-entropy across all training examples: that's our loss.
+  logits = tf.matmul(tf_train_dataset, weights) + biases
+  loss = tf.reduce_mean(
+    tf.nn.softmax_cross_entropy_with_logits(labels=tf_train_labels, logits=logits))
+  
+  # Optimizer.
+  # We are going to find the minimum of this loss using gradient descent.
+  optimizer = tf.train.GradientDescentOptimizer(0.5).minimize(loss)
+  
+  # Predictions for the training, validation, and test data.
+  # These are not part of training, but merely here so that we can report
+  # accuracy figures as we train.
+  train_prediction = tf.nn.softmax(logits)
+  valid_prediction = tf.nn.softmax(
+    tf.matmul(tf_valid_dataset, weights) + biases)
+  test_prediction = tf.nn.softmax(tf.matmul(tf_test_dataset, weights) + biases)
+
+def accuracy(predictions, labels):
+  return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))
+          / predictions.shape[0])
+
+with tf.Session(graph=graph) as session:
+  # This is a one-time operation which ensures the parameters get initialized as
+  # we described in the graph: random weights for the matrix, zeros for the
+  # biases. 
+  tf.global_variables_initializer().run()
+  print('Initialized')
+  for step in range(num_steps):
+    # Run the computations. We tell .run() that we want to run the optimizer,
+    # and get the loss value and the training predictions returned as numpy
+    # arrays.
+    _, l, predictions = session.run([optimizer, loss, train_prediction])
+    if (step % 100 == 0):
+      print('Loss at step %d: %f' % (step, l))
+      print('Training accuracy: %.1f%%' % accuracy(
+        predictions, train_labels[:train_subset, :]))
+      # Calling .eval() on valid_prediction is basically like calling run(), but
+      # just to get that one numpy array. Note that it recomputes all its graph
+      # dependencies.
+      print('Validation accuracy: %.1f%%' % accuracy(
+        valid_prediction.eval(), valid_labels))
+  print('Test accuracy: %.1f%%' % accuracy(test_prediction.eval(), test_labels))
