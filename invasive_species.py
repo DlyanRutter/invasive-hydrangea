@@ -4,6 +4,7 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import KFold
 from tensorflow.python.framework import dtypes, random_seed
+from tensorflow.examples.tutorials.mnist import mnist
 
 from keras.models import Model, load_model
 from keras.layers import Dense, Dropout, Activation, Convolution2D, \
@@ -22,7 +23,7 @@ learning_rate = 0.01
 
 height = 25
 width = 25
-batch_size = 5
+batch_size = 6
 num_labels = 2
 
 train_dir = '/Users/dylanrutter/Downloads/train'
@@ -102,7 +103,7 @@ class DataSet(object):
         dtype = dtypes.as_dtype(dtype).base_dtype
         
         if fake_data==True:
-            self._num_examples = images.shape[0]#len(images[0]/6)
+            self._num_examples = images.shape[0]
             self.one_hot = one_hot
 
         else:
@@ -112,10 +113,6 @@ class DataSet(object):
                                                        labels.shape))
             
             self._num_examples = images.shape[0]
-
-
- #           images = images.reshape(images.shape[0],
-#                                    images.shape[1] * images.shape[2])
 
             if dtype == dtypes.float32:
                 images = images.astype(np.float32)
@@ -190,8 +187,8 @@ class DataSet(object):
             im_new_part = self._images[start:end]
             labels_new_part = self._labels[start:end]
 
-            return np.concantenate((im_rem_part, im_new_part), axis=0),\
-                   np.concantenate((lables_rem_part, labels_new_part), axis=0)
+            return np.concatenate((im_rem_part, im_new_part), axis=0),\
+                   np.concatenate((labels_rem_part, labels_new_part), axis=0)
 
         else:
             self._index_in_epoch += batch_size
@@ -262,10 +259,6 @@ def mix(dataset, labels):
     labels = (np.arange(num_labels) == labels[:,None]).astype(np.float32)
     return dataset, labels
 
-#    for train_index, test_index in kf.split(x):
-#        x_train = x.iloc[train_index]; x_valid = x.iloc[test_index]
-#        y_train = y[train_index]; y_valid = y[test_index]
-
 train_imgs, train_labels = mix(tf_train_img[:1850], train_label[:1850])
 valid_imgs, valid_labels = mix(tf_train_img[1850:2000], train_label[1850:2000])
 test_imgs, test_labels = mix(tf_train_img[2000:], train_label[2000:])
@@ -275,23 +268,19 @@ valid_ds = DataSet(valid_imgs, valid_labels)
 test_ds = DataSet(test_imgs, test_labels)
 
 
-print('Training set', train_imgs.shape, train_labels.shape)
-print('Validation set', valid_imgs.shape, valid_labels.shape)
-print('Test set', test_imgs.shape, test_labels.shape)
-
-#train_steps = len(x_train) / batch_size
-#valid_steps = len(x_valid) / batch_size
-#test_steps = len(test) / batch_size
+#print('Training set', train_imgs.shape, train_labels.shape)
+#print('Validation set', valid_imgs.shape, valid_labels.shape)
+#print('Test set', test_imgs.shape, test_labels.shape)
 
 def losses(logits, labels):
     """
-    calculate loss from lots and labels. logits is a logits tensor, float -
+    calculate loss from lotgits and labels. logits is a logits tensor, float -
     [batch_size, num_labels]. labels is labels tensor, int32 - [batch_size].
     returns float loss tensor
     """
-    labels = tf.to_int64(labels)
-    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
         labels=labels, logits=logits, name='xentropy')
+    
     return tf.reduce_mean(cross_entropy, name='xentropy_mean')
         
 def placeholder_inputs(batch_size):
@@ -308,10 +297,10 @@ def placeholder_inputs(batch_size):
         images_placeholder: Images placeholder.
         labels_placeholder: Labels placeholder.
     """
-    images_placeholder = tf.placeholder(tf.float32, shape=(batch_size,
-                                                           height*width))
-    labels_placeholder = tf.placeholder(tf.int32, shape=(batch_size,
-                                                         num_labels))
+    images_placeholder = tf.placeholder(tf.float32, shape=([None,
+                                                           height*width]))    
+    labels_placeholder = tf.placeholder(tf.int32,)
+                                                       
     return images_placeholder, labels_placeholder
 
 def fill_feed_dict(data_set, im_placeholder, labels_placeholder):
@@ -344,7 +333,6 @@ def start_eval(sess,
     """  
     true_count = 0   
     steps_per_epoch = data_set.num_examples // FLAGS.batch_size
-    #print steps_per_epoch
     num_examples = steps_per_epoch * FLAGS.batch_size
     for step in xrange(steps_per_epoch):
       feed_dict = fill_feed_dict(data_set,
@@ -368,21 +356,31 @@ def evaluation(logits, labels, k=1):
     correct = tf.nn.in_top_k(logits, labels, k)
     return tf.reduce_sum(tf.cast(correct, tf.int32))
 
-def make_logits(images, hidden1, hidden2):
+def make_logits(images, initial, hidden1, hidden2):
     """
     build up a model for dataset. Images is an images placeholder. hidden1 is
     the size of the first hidden layer. AKA size of number of labels.
     hidden2 is the size of the second hidden layer. returns an output
     tensor with computed logits
     """
+    with tf.name_scope('first'):
+        print type((height*width))
+        weights = tf.Variable(
+            tf.truncated_normal([height*width, FLAGS.initial],
+                               stddev=1.0 / math.sqrt(float(height*width))),
+            name='weights')
+        biases = tf.Variable(tf.zeros([FLAGS.initial]),
+                             name='biases')
+        f1 = tf.nn.relu(tf.add(tf.matmul(images, weights), biases))
+                                                     
     with tf.name_scope('hidden1'):
         weights = tf.Variable(
-            tf.truncated_normal([height*width, hidden1],
-                                stddev=1.0 / math.sqrt(float(height*width))),
+            tf.truncated_normal([initial, hidden1],
+                                stddev=1.0 / math.sqrt(float(initial))),
             name='weights')
         biases = tf.Variable(tf.zeros([hidden1]),
                              name='biases')
-        h1 = tf.nn.relu(tf.matmul(images, weights) + biases)
+        h1 = tf.nn.relu(tf.add(tf.matmul(f1, weights), biases))
 
     with tf.name_scope('hidden2'):
         weights = tf.Variable(
@@ -391,7 +389,7 @@ def make_logits(images, hidden1, hidden2):
             name='weights')
         biases = tf.Variable(tf.zeros([hidden2]),
                              name='biases')
-        h2 = tf.nn.relu(tf.matmul(h1, weights) + biases)
+        h2 = tf.nn.relu(tf.add(tf.matmul(h1, weights), biases))
 
     with tf.name_scope('softmax_linear'):
         weights = tf.Variable(
@@ -401,6 +399,7 @@ def make_logits(images, hidden1, hidden2):
         biases = tf.Variable(tf.zeros([num_labels]),
                              name='biases')
         logits = tf.matmul(h2, weights) + biases
+    
     return logits
 
 def training_ops(loss, learning_rate=learning_rate):
@@ -416,4 +415,205 @@ def training_ops(loss, learning_rate=learning_rate):
     global_step = tf.Variable(0, name='global_step', trainable=False)
     train_op = optimizer.minimize(loss, global_step=global_step)
     return train_op
-                                    
+                                   
+def run_sess():
+    """
+    train data for a number of steps, get the sets of images and labels for
+    training, validation, and test sets
+    """
+    with tf.Graph().as_default(): 
+
+        images_placeholder = tf.placeholder(tf.float32, shape=[None,
+                                                               height*width])
+                                                        
+        labels_placeholder = tf.placeholder(tf.int32,)
+
+        logits = make_logits(images_placeholder, FLAGS.initial,
+                             FLAGS.hidden1,FLAGS.hidden2)
+               
+        loss = losses(logits, labels_placeholder)
+        train_op = training_ops(loss, FLAGS.learning_rate)
+        eval_correct = mnist.evaluation(logits, labels_placeholder)        
+        summary = tf.summary.merge_all()
+
+        sess = tf.Session()
+        summary_writer = tf.summary.FileWriter(FLAGS.log_dir, sess.graph)
+        saver = tf.train.Saver()
+        
+        init = tf.global_variables_initializer()
+        sess.run(init)
+
+        for step in xrange(FLAGS.max_steps):
+            epoch_loss = 0
+            start_time = time.time()
+            for _ in range(int(train_ds.num_examples/batch_size)):
+
+               feed_dict = fill_feed_dict(train_ds,
+                                            images_placeholder,
+                                            labels_placeholder)
+
+               _, loss_value = sess.run(
+                   [train_op, loss], feed_dict=feed_dict)
+               
+               duration = time.time() - start_time
+               epoch_loss += loss_value
+               
+            print('Epoch', step, ' completed out of',
+                  FLAGS.max_steps, ' loss', epoch_loss)
+            """
+            print('Training Data Eval:')
+            start_eval(sess,
+                       eval_correct,
+                       images_placeholder,
+                       labels_placeholder,
+                       train_ds)
+            print('Validation Data Eval:')
+            start_eval(sess,
+                       eval_correct,
+                       images_placeholder,
+                       labels_placeholder,
+                       valid_ds)
+            print('Test Data Eval:')
+            start_eval(sess,
+                       eval_correct,
+                       images_placeholder,
+                       labels_placeholder,
+                       test_ds)
+            """
+
+"""
+            if (step % 30 == 0):
+                  print("Minibatch loss at step %d: %f" % (step, loss_value))
+                  print("Minibatch accuracy: %.1f%%" % accuracy(
+                      predictions, batch_labels))
+                  print("Validation accuracy: %.1f%%" % accuracy(
+                      valid_prediction.eval(), valid_labels))
+    print("Test accuracy: %.1f%%" % accuracy(test_prediction.eval(
+        ), test_labels))
+
+           
+            if step % 100 == 0:
+                print('Step %d: loss = %.2f (%.3f sec)' %\
+                      (step, loss_value, duration))
+                summary_str = sess.run(summary, feed_dict=feed_dict)
+                summary_writer.add_summary(summary_str, step)
+                summary_writer.flush()
+
+            if (step + 1) % 1000 == 0 or (step + 1) == FLAGS.max_steps:
+                checkpoint_file = os.path.join(FLAGS.log_dir, 'model.ckpt')
+                saver.save(sess, checkpoint_file, global_step=step)
+"""
+ 
+"""
+with tf.Graph().as_default():
+  # Input data.
+  # Load the training, validation and test data into constants that are
+  # attached to the graph.
+  tf_train_data = tf.placeholder(tf.float32, shape=(batch_size, height*width))
+  tf_train_labels = tf.placeholder(tf.float32, shape=(batch_size, num_labels))
+  tf_valid_dataset = tf.constant(valid_dataset)
+  tf_test_data = tf.constant(test_dataset)
+  
+  # Predictions for the training, validation, and test data.
+  # These are not part of training, but merely here so that we can report
+  # accuracy figures as we train.
+  train_prediction = tf.nn.softmax(logits)
+  valid_prediction = tf.nn.softmax(
+    tf.matmul(tf_valid_dataset, weights) + biases)
+  test_prediction = tf.nn.softmax(tf.matmul(tf_test_data, weights) + biasesdef accuracy(predictions, labels):
+  return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))
+          / predictions.shape[0])
+
+with tf.Session(graph=graph) as session:
+  session.run(tf.global_variables_initializer())
+
+  for step in range(num_steps):
+                                   
+    offset = (step * batch_size) % (train_labels.shape[0] - batch_size)
+
+    batch_data = train_dataset[offset:(offset + batch_size), :]
+    batch_labels = train_labels[offset:(offset + batch_size), :]
+
+    feed_dict = {tf_train_data : batch_data, tf_train_labels : batch_labels}
+    _, l, predictions = session.run(
+      [optimizer, loss, train_prediction], feed_dict=feed_dict)
+                                   
+    if (step % 500 == 0):
+      print("Minibatch loss at step %d: %f" % (step, l))
+      print("Minibatch accuracy: %.1f%%" % accuracy(predictions, batch_labels))
+      print("Validation accuracy: %.1f%%" % accuracy(
+        valid_prediction.eval(), valid_labels))
+  print("Test accuracy: %.1f%%" % accuracy(test_prediction.eval(), test_labels))
+"""
+
+
+
+def main(_):
+  #if tf.gfile.Exists(FLAGS.log_dir):
+  #    tf.gfile.DeleteRecursively(FLAGS.log_dir)
+ # tf.gfile.MakeDirs(FLAGS.log_dir)
+  run_sess()
+
+
+if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--learning_rate',
+      type=float,
+      default=0.01,
+      help='Initial learning rate.'
+  )
+  parser.add_argument(
+      '--max_steps',
+      type=int,
+      default=300,
+      help='Number of steps to run trainer.'
+  )
+  parser.add_argument(
+      '--initial',
+      type=int,
+      default=128,
+      help='Number of units in initial layer.'
+  )
+  parser.add_argument(
+      '--hidden1',
+      type=int,
+      default=128,
+      help='Number of units in hidden layer 1.'
+  )
+  parser.add_argument(
+      '--hidden2',
+      type=int,
+      default=32,
+      help='Number of units in hidden layer 2.'
+  )
+  parser.add_argument(
+      '--batch_size',
+      type=int,
+      default=batch_size,
+      help='Batch size.  Must divide evenly into the dataset sizes.'
+  )
+  parser.add_argument(
+      '--input_data_dir',
+      type=str,
+      default=os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
+                           'input_data'),
+      help='Directory to put the input data.'
+  )
+  parser.add_argument(
+      '--log_dir',
+      type=str,
+      default=os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
+                           'input_data'),
+      help='Directory to put the log data.'
+  )
+  parser.add_argument(
+      '--fake_data',
+      default=False,
+      help='If true, uses fake data for unit testing.',
+      action='store_true'
+  )
+
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+
