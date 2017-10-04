@@ -361,7 +361,7 @@ def make_logits(images, initial, hidden1, hidden2):
     build up a model for dataset. Images is an images placeholder. hidden1 is
     the size of the first hidden layer. AKA size of number of labels.
     hidden2 is the size of the second hidden layer. returns an output
-    tensor with computed logits
+    tensor with computed logits. initial is the first layer
     """
     with tf.name_scope('first'):
         print type((height*width))
