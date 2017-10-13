@@ -4,7 +4,7 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import KFold
 from tensorflow.python.framework import dtypes, random_seed
-from tensorflow.examples.tutorials.mnist import mnist
+#from tensorflow.examples.tutorials.mnist import mnist
 
 from keras.models import Model, load_model
 from keras.layers import Dense, Dropout, Activation, Convolution2D, \
